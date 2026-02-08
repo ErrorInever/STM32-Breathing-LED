@@ -1,19 +1,56 @@
 
 #include "main.h"
+#include "stm32f446xx.h"
+#include <stdint.h>
+// define PWM params
+#define PSC
+#define ARR
+#define CCR
 
+void led_init(void) {
+  RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
+  (void)RCC->AHB1ENR;
+  // set pin mode AF
+  GPIOA->MODER &= ~GPIO_MODER_MODER5_Msk;
+  GPIOA->MODER |= GPIO_MODER_MODER5_1;
+  // select AF1 TIM2_CH1
+  GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL5_Msk;
+  GPIOA->AFR[0] |= GPIO_AFRL_AFSEL5_0;
+  // set medium speed
+  GPIOA->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED5_Msk;
+  GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED5_0;
+}
+
+void sysTick_init(void) {
+  // interrupt each 1ms. therefore LOAD = 84Mhz / 1000ms. 84000 ticks for one ms.
+  uint32_t N = 84000UL;
+  SysTick->LOAD = N - 1;
+  SysTick->VAL = 0;
+  SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk |
+                    SysTick_CTRL_TICKINT_Msk |
+                    SysTick_CTRL_CLKSOURCE_Msk;
+}
+
+void delay_ms(uint32_t ms) {
+  // TODO 
+  // default block delay()
+}
+
+void tim2_init(void) {
+  // TODO
+  // PSC 1 Mhz, ARR 1000, PWM 1Khz, channel CCMR1: PWM mode 1. Enable preload OC1PE
+  // Output CCER: enable output signal to pin (CC1E)
+  // status timer ENABLE (CEN)
+}
 
 void SystemClock_Config(void);
 
-int main(void)
-{
-
+int main(void) {
   SystemClock_Config();
 
-  while (1)
-  {
- 
+  while (1) {
+    led_init();
   }
-
 }
 
 void SystemClock_Config(void)
