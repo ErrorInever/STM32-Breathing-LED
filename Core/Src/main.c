@@ -1,19 +1,29 @@
 
 #include "main.h"
 #include "stm32f446xx.h"
+#include "stm32f4xx_it.h"
 #include <stdint.h>
+#include <stdbool.h>
 // define PWM params
-#define PSC
-#define ARR
-#define CCR
+#define PSC_VAL 84UL
+#define ARR_VAL 1000UL
+#define CCR_VAL
+#define PWM_MODE_1 6UL
 
-void led_init(void) {
+typedef enum {INHALING, PAUSE_UP, EXHALING, PAUSE_DOWN} BreathState;
+
+volatile uint32_t ms_ticks = 0;
+volatile int32_t brightness_step = 1;
+const int32_t PAUSE_DURATION = 500;
+
+
+static void led_init(void) {
   RCC->AHB1ENR |= RCC_AHB1ENR_GPIOAEN;
   (void)RCC->AHB1ENR;
   // set pin mode AF
   GPIOA->MODER &= ~GPIO_MODER_MODER5_Msk;
   GPIOA->MODER |= GPIO_MODER_MODER5_1;
-  // select AF1 TIM2_CH1
+  // select AF1 TIM2_CH1 
   GPIOA->AFR[0] &= ~GPIO_AFRL_AFSEL5_Msk;
   GPIOA->AFR[0] |= GPIO_AFRL_AFSEL5_0;
   // set medium speed
@@ -21,35 +31,108 @@ void led_init(void) {
   GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED5_0;
 }
 
-void sysTick_init(void) {
+static void sysTick_init(void) {
   // interrupt each 1ms. therefore LOAD = 84Mhz / 1000ms. 84000 ticks for one ms.
   uint32_t N = 84000UL;
-  SysTick->LOAD = N - 1;
-  SysTick->VAL = 0;
+  SysTick->LOAD = N - 1UL;
+  SysTick->VAL = 0UL;
+  // Get MHz from CPU, enable interrupt, start countdown
   SysTick->CTRL |= SysTick_CTRL_ENABLE_Msk |
                     SysTick_CTRL_TICKINT_Msk |
                     SysTick_CTRL_CLKSOURCE_Msk;
 }
 
-void delay_ms(uint32_t ms) {
-  // TODO 
-  // default block delay()
+static inline void delay_ms(uint32_t ms) { 
+  uint32_t start_ms = ms_ticks;
+  while((ms_ticks - start_ms) < ms);
 }
 
-void tim2_init(void) {
-  // TODO
-  // PSC 1 Mhz, ARR 1000, PWM 1Khz, channel CCMR1: PWM mode 1. Enable preload OC1PE
-  // Output CCER: enable output signal to pin (CC1E)
-  // status timer ENABLE (CEN)
+static void tim2_init(void) {
+  RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+  (void)RCC->APB1ENR;
+  TIM2->PSC = PSC_VAL - 1UL;
+  // PWM 1Khz: 1000 PWM full cycles in sec (each cycle has 1000 tick)
+  // Summary: 1000 cycles * 1000 ticks = 1 million ticks in sec
+  TIM2->ARR = ARR_VAL - 1UL;
+  // Duty cycle. ARR = 1000, therefore 10% of 1000 = 100; 20% of 1000 = 200, etc. 
+  TIM2->CCR1 = 0UL; // Start from 0%
+  TIM2->CCMR1 &= ~TIM_CCMR1_OC1M_Msk; // CC1S output (0x00 by default)
+  // OC1M PWM Mode 1 channel 1 (while CNT < CCR pin is 1, else 0)
+  TIM2->CCMR1 |= (PWM_MODE_1 << TIM_CCMR1_OC1M_Pos);
+  TIM2->CCMR1 |= TIM_CCMR1_OC1PE; // Enable preload
+  // Enable CCER
+  TIM2->CCER &= ~TIM_CCER_CC1E_Msk;
+  TIM2->CCER |= TIM_CCER_CC1E; 
+  // Enable generate interrupts (when CNT == ARR)
+  TIM2->DIER &= ~TIM_DIER_UDE_Msk;
+  TIM2->DIER |= TIM_DIER_UIE;
+  HAL_NVIC_EnableIRQ(TIM2_IRQn); // enable interrupt in NVIC
+  // Start timer
+  TIM2->CR1 &= ~TIM_CR1_CEN_Msk;
+  TIM2->CR1 |= TIM_CR1_CEN;
 }
+
+void SysTick_Handler(void) {
+  ms_ticks++;
+}
+
+void TIM2_IRQHandler(void) {
+  // if PWM pass 1 full cycle (CNT == ARR)
+  static int32_t brightness = 0;
+  static BreathState state = INHALING;
+  static int32_t pause_timer = 0;
+  //INHALING, PAUSE_UP, EXHALING, PAUSE_DOWN
+  if(TIM2->SR & TIM_SR_UIF) {
+    TIM2->SR &= ~TIM_SR_UIF_Msk; // reset flag
+    (void)TIM2->SR; // save delay
+
+    switch (state) {
+      case INHALING:
+        brightness += brightness_step;
+        if(brightness >= 1000) {
+          brightness = 1000;
+          state = PAUSE_UP;
+          pause_timer = 0;
+        }
+        break;
+      case PAUSE_UP:
+        pause_timer++;
+        if(pause_timer >= PAUSE_DURATION) {
+          state = EXHALING;
+        }
+        break;
+      case EXHALING:
+        brightness -= brightness_step;
+        if(brightness <= 0) {
+          brightness = 0;
+          state = PAUSE_DOWN;
+          pause_timer = 0;
+        }
+        break;
+      case PAUSE_DOWN:
+        pause_timer++;
+        if(pause_timer >= PAUSE_DURATION) {
+          state = INHALING;
+        }
+        break;
+    }
+  
+    TIM2->CCR1 = (uint32_t)brightness;
+  }
+}
+
+
 
 void SystemClock_Config(void);
 
 int main(void) {
   SystemClock_Config();
+  led_init();
+  sysTick_init();
+  tim2_init();
 
   while (1) {
-    led_init();
+   __WFI();
   }
 }
 
