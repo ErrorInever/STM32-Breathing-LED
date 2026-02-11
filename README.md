@@ -38,6 +38,7 @@ if ((ms_ticks - last_press_time) > 200) {
 }
 
 **Project Structure**
+
 main.c: Hardware initialization and main low-power loop.
 stm32f4xx_it.c: Interrupt Service Routines (ISRs) for SysTick, TIM2, and EXTI.
 system_clock.c: PLL configuration for 84MHz operation.
