@@ -1,7 +1,8 @@
 STM32 Breathing LED with FSM and Interrupts
 A Bare-Metal firmware for STM32F446RE (Nucleo-64) that implements a "breathing" LED effect using hardware timers, interrupts, and a Finite State Machine (FSM).
 
-Features
+**Features**
+
 Hardware PWM Generation: Utilizes TIM2 Channel 1 for smooth LED brightness control.
 Event-Driven Architecture: Entirely interrupt-based logic; the CPU remains in low-power mode (WFI) most of the time.
 Finite State Machine (FSM): Managed breathing cycles: INHALING, PAUSE_UP, EXHALING, and PAUSE_DOWN.
@@ -10,7 +11,8 @@ Software Debouncing: Integrated timing logic to handle mechanical button bounce 
 
 ---
 
-Parameter,Value
+**Parameter,Value**
+
 Microcontroller,STM32F446RET6 (ARM Cortex-M4)
 Clock Speed,84 MHz
 PWM Frequency,1 kHz
@@ -19,7 +21,8 @@ Interaction,EXTI13 (External Interrupt)
 
 ---
 
-How it Works
+**How it Works**
+
 1. PWM & Timer Logic
 The LED is connected to PA5 (LD2 on Nucleo). TIM2 is configured in PWM Mode 1. The brightness is controlled by updating the CCR1 register within the TIM2_IRQHandler every 1ms.
 2. State Machine
