@@ -1,6 +1,7 @@
 
 #include "main.h"
 #include "stm32f446xx.h"
+#include "stm32f4xx_hal_cortex.h"
 #include "stm32f4xx_it.h"
 #include <stdint.h>
 #include <stdbool.h>
@@ -12,9 +13,9 @@
 
 typedef enum {INHALING, PAUSE_UP, EXHALING, PAUSE_DOWN} BreathState;
 
-volatile uint32_t ms_ticks = 0;
-volatile int32_t brightness_step = 1;
-const int32_t PAUSE_DURATION = 500;
+volatile uint32_t ms_ticks = 0;         // ms ticks for delay
+volatile int32_t brightness_step = 1;   // brightness step for LED
+const int32_t PAUSE_DURATION = 500;     // pause duration of breath
 
 
 static void led_init(void) {
@@ -29,6 +30,32 @@ static void led_init(void) {
   // set medium speed
   GPIOA->OSPEEDR &= ~GPIO_OSPEEDR_OSPEED5_Msk;
   GPIOA->OSPEEDR |= GPIO_OSPEEDR_OSPEED5_0;
+}
+
+static void button_init(void) {
+  RCC->AHB1ENR |= RCC_AHB1ENR_GPIOCEN;
+  (void)RCC->AHB1ENR;
+  // set mode input
+  GPIOC->MODER &= ~GPIO_MODER_MODER13_Msk;
+  // pull-up button
+  GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR13;
+  GPIOC->PUPDR |= GPIO_PUPDR_PUPDR13_0;
+}
+
+static void button_interrupt_init(void) {
+  RCC->APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+  (void)RCC->APB2ENR;
+  // Set 13 line to C port
+  SYSCFG->EXTICR[3] &= ~SYSCFG_EXTICR4_EXTI13_Msk;
+  SYSCFG->EXTICR[3] |= SYSCFG_EXTICR4_EXTI13_PC;
+  // Enable interrupt for 13 line
+  EXTI->IMR &= ~EXTI_IMR_MR13_Msk;
+  EXTI->IMR |= EXTI_IMR_IM13;
+  // Set type of the event as "falling trigger"
+  EXTI->FTSR &= ~EXTI_FTSR_TR13_Msk;
+  EXTI->FTSR |= EXTI_FTSR_TR13;
+  // Enable 40id in NVIC
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
 
 static void sysTick_init(void) {
@@ -76,16 +103,31 @@ void SysTick_Handler(void) {
   ms_ticks++;
 }
 
+// increases speed of breathing
+void EXTI15_10_IRQHandler(void) {
+  if(EXTI->PR & EXTI_PR_PR13) {
+    EXTI->PR = EXTI_PR_PR13;
+
+    static uint32_t last_time = 0;
+    if ((ms_ticks - last_time) < 200) return; // ignore debounce
+    last_time = ms_ticks;
+
+    brightness_step += 2; 
+    if(brightness_step > 20) brightness_step = 1;
+  }
+}
+
+
 void TIM2_IRQHandler(void) {
   // if PWM pass 1 full cycle (CNT == ARR)
   static int32_t brightness = 0;
   static BreathState state = INHALING;
   static int32_t pause_timer = 0;
-  //INHALING, PAUSE_UP, EXHALING, PAUSE_DOWN
+
   if(TIM2->SR & TIM_SR_UIF) {
     TIM2->SR &= ~TIM_SR_UIF_Msk; // reset flag
     (void)TIM2->SR; // save delay
-
+    // Breath states
     switch (state) {
       case INHALING:
         brightness += brightness_step;
@@ -116,11 +158,9 @@ void TIM2_IRQHandler(void) {
         }
         break;
     }
-  
     TIM2->CCR1 = (uint32_t)brightness;
   }
 }
-
 
 
 void SystemClock_Config(void);
@@ -128,6 +168,8 @@ void SystemClock_Config(void);
 int main(void) {
   SystemClock_Config();
   led_init();
+  button_init();
+  button_interrupt_init();
   sysTick_init();
   tim2_init();
 
@@ -182,8 +224,7 @@ void SystemClock_Config(void)
 void Error_Handler(void)
 {
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
 
 }
