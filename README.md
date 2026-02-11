@@ -37,7 +37,7 @@ if ((ms_ticks - last_press_time) > 200) {
     // Update breathing step...
 }
 
-Project Structure
+**Project Structure**
 main.c: Hardware initialization and main low-power loop.
 stm32f4xx_it.c: Interrupt Service Routines (ISRs) for SysTick, TIM2, and EXTI.
 system_clock.c: PLL configuration for 84MHz operation.
@@ -47,7 +47,8 @@ Hardware: Nucleo-F446RE (or any STM32F4 with minor pin remapping).
 
 ---
 
-Future Improvements
+**Future Improvements**
+
 Gamma Correction: Implementing a Look-Up Table (LUT) for exponential/sinusoidal brightness to match human eye perception.
 DMA Integration: Moving PWM updates to DMA to further reduce CPU load.
 UART Telemetry: Reporting state changes and brightness levels via Serial.
