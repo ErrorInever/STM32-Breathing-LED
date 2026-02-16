@@ -1,67 +1,82 @@
 # STM32 Breathing LED with FSM and Interrupts
-A Bare-Metal firmware for STM32F446RE (Nucleo-64) that implements a "breathing" LED effect using hardware timers, interrupts, and a Finite State Machine (FSM).
+Bare-Metal firmware for STM32F446RE (Nucleo-64). Implements a "breathing" LED effect using a non-blocking architecture, circular buffers, and an interrupt-driven Command Line Interface (CLI).
 
 ## Features
-Hardware PWM Generation: Utilizes TIM2 Channel 1 for smooth LED brightness control.
-Event-Driven Architecture: Entirely interrupt-based logic; the CPU remains in low-power mode (WFI) most of the time.
-Finite State Machine (FSM): Managed breathing cycles: INHALING, PAUSE_UP, EXHALING, and PAUSE_DOWN.
-Interactive Control: User Button (B1) on PC13 changes the breathing speed.
-Software Debouncing: Integrated timing logic to handle mechanical button bounce using SysTick.
+New Features
+Interrupt-Driven UART: Fully asynchronous serial communication (115200 baud).
+Custom Ring Buffer: A thread-safe, generic circular buffer implementation using power-of-two masking for high performance.
+Async Logging: Non-blocking UART_Printf allows the system to log state transitions without stalling the CPU.
+Two-Way Interaction: Real-time control of breathing parameters (e.g., speed) via serial commands (+ / -).
+Atomic Operations: Critical sections protected via interrupt disabling to prevent race conditions between main and ISRs.
 
 ---
 
 ## Parameter,Value
 
+Parameter,Value
 Microcontroller,STM32F446RET6 (ARM Cortex-M4)
 Clock Speed,84 MHz
-PWM Frequency,1 kHz
-PWM Resolution,1000 steps (ARR = 999)
-Interaction,EXTI13 (External Interrupt)
+PWM Frequency,1 kHz (Resolution: 1000 steps)
+UART Config,115200 8N1
+Ring Buffer,128 bytes (Power-of-two optimized)
+Architecture,Event-Driven / Interrupt-Driven
 
 ---
 
-## How it Works
+## Project Architecture
 
-1. PWM & Timer Logic
-The LED is connected to PA5 (LD2 on Nucleo). TIM2 is configured in PWM Mode 1. The brightness is controlled by updating the CCR1 register within the TIM2_IRQHandler every 1ms.
-2. State Machine
-The breathing pattern follows a structured sequence to mimic natural breathing:
-Inhaling: Linear increase of PWM duty cycle.
-Pause Up: 500ms delay at maximum brightness.
-Exhaling: Linear decrease of PWM duty cycle.
-Pause Down: 500ms delay at zero brightness.
-3. Button Debouncing
-To prevent erratic behavior from mechanical noise, the EXTI15_10_IRQHandler uses a timestamp-based comparison:
-```C
-if ((ms_ticks - last_press_time) > 200) {
-    // Update breathing step...
-}
-```
+1. Circular Buffer (circular_buffer.h/c)
+A generic implementation for embedded systems:
+Performance: Uses (i + 1) & mask instead of modulo.
+Safety: Provides cb_push_safe for atomic access from the main loop.
+Documentation: Fully documented in Doxygen format (English).
+
+2. UART Driver with CLI
+The USART2_IRQHandler manages both transmission and reception:
+TX: Automatically empties the ring buffer into the DR register.
+RX: Listens for user commands (+ to speed up, - to slow down) and updates the FSM parameters on the fly.
+
+3. Finite State Machine (FSM)
+Managed within TIM2_IRQHandler:
+INHALING: Incremental brightness.
+PAUSE_UP: Peak hold.
+EXHALING: Decremental brightness.
+PAUSE_DOWN: Minimum hold.
+Event Logging: Reports state changes to UART only during transitions to save bandwidth.
+
+---
+
 
 ## Project Structure
 
-main.c: Hardware initialization and main low-power loop.
-stm32f4xx_it.c: Interrupt Service Routines (ISRs) for SysTick, TIM2, and EXTI.
-system_clock.c: PLL configuration for 84MHz operation.
-
+'circular_buffer.h/c': Generic ring buffer library.
+'uart.h/c': UART initialization, 'UART_Printf', and ISR logic.
+'main.c': System setup and low-power background loop.
+'stm32f4xx_it.c': Unified interrupt service routines.
 ---
 
 ## Requirements
 ### Hardware Connection
-| Peripheral | MCU Pin | Function | Description |
-| :--- | :--- | :--- | :--- |
-| **TIM2_CH1** | PA5 | PWM Output | Internal Green LED (LD2) |
-| **EXTI13** | PC13 | Input | User Blue Button (B1) |
-| **SYS_SWD** | PA13/PA14 | Debug | ST-LINK Interface |
+Peripheral	MCU Pin	Function	Description
+TIM2_CH1	PA5	PWM Output	Internal Green LED (LD2)
+USART2_TX	PA2	Telemetry	Serial Output (ST-Link VCP)
+USART2_RX	PA3	Control	Serial Input (ST-Link VCP)
+EXTI13	PC13	Input	User Blue Button (B1)
 
 
-Toolchain: VScode / GNU Arm Embedded Toolchain.
-Hardware: Nucleo-F446RE (or any STM32F4 with minor pin remapping).
+---
+
+## How to Use
+Connect the Nucleo-F446RE via USB.
+Open Serial Monitor in VS Code (115200 baud).
+Observe the state transitions in the console.
+Press + or - in the terminal to adjust the breathing speed in real-time.
 
 ---
 
 ## Future Improvements
+Gamma Correction: Implementing a Look-Up Table (LUT) to match human eye perception.
+DMA Integration: Offloading UART transmission from the CPU to the DMA controller.
+Command Parser: Implementing a more robust CLI to handle strings like SET_SPEED 50.
 
-Gamma Correction: Implementing a Look-Up Table (LUT) for exponential/sinusoidal brightness to match human eye perception.
-DMA Integration: Moving PWM updates to DMA to further reduce CPU load.
-UART Telemetry: Reporting state changes and brightness levels via Serial.
+---
