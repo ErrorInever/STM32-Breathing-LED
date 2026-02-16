@@ -31,8 +31,17 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 # Enable CMake support for ASM and C languages
 enable_language(C ASM)
 
+
 # Create an executable object type
-add_executable(${CMAKE_PROJECT_NAME})
+add_executable(${CMAKE_PROJECT_NAME}
+    Core/Src/gpio_driver.c
+    Core/Src/main.c
+    Core/Src/pwm.c
+    Core/Src/rcc.c
+    Core/Src/systick.c
+    Core/Src/uart.c
+    Core/Src/circular_buffer.c
+)
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -48,9 +57,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 # Add include paths
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-    # Add user defined include paths
-)
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE Core/Inc)
 
 # Add project symbols (macros)
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
